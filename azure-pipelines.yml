@@ -136,10 +136,6 @@ jobs:
       artifactName: 'build-files-intermediate-macos'
       targetPath: $(Build.ArtifactStagingDirectory)
 - job: ProcessArtifacts
-  # We only build this if:
-  # - The branch being built is master.
-  # - The commit is tagged.
-  # - The build was triggered manually.
   condition: |
     and(
       succeeded(),
