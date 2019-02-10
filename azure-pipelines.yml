@@ -8,18 +8,43 @@
 # - MacOS build errors in Calin's QR reader.
 
 trigger:
-  batch: false
   branches:
     include:
-    - master
-    - release-1.0
+      - master
 
 pr:
-- master
-- release-1.0
+  - master
 
 jobs:
+- job: Preparation
+  pool:
+    vmImage: 'ubuntu-16.04'
+  steps:
+  - script: |
+      MOST_RECENT_TAG=`git describe --tags --abbrev=0 --match sv-*`
+      TAGGED_COMMIT=`git rev-list -n 1 ${MOST_RECENT_TAG}`
+      # Only set this flag if the commit is on the tag.
+      if [ "$(Build.SourceVersion)" == "$TAGGED_COMMIT" ]
+      then
+        echo "##vso[task.setvariable variable=COMMIT_TAGGED;isOutput=true]yes"
+        echo "##vso[task.setvariable variable=COMMIT_TAG;isOutput=true]${MOST_RECENT_TAG}"
+      else
+        echo "##vso[task.setvariable variable=COMMIT_TAGGED;isOutput=true]no"
+        echo "##vso[task.setvariable variable=COMMIT_TAG;isOutput=true]"
+      fi
+      echo "Commit description = $TAGGED_COMMIT"
+      echo "Commit closest tag = $MOST_RECENT_TAG"
+      echo "Commit source version = $(Build.SourceVersion)"
+      echo "Commit source branch = $(Build.SourceBranch)"
+      echo "Commit build reason = $(Build.Reason)"
+    name: exportVars
+    displayName: Export commit tag for dependent tasks
+    enabled: true
+    continueOnError: false
+    failOnStderr: true
 - job: BuildLinuxBasedWindows
+  dependsOn:
+  - Preparation
   pool:
     vmImage: 'ubuntu-16.04'
   steps:
@@ -29,31 +54,30 @@ jobs:
       addToPath: true
       architecture: x64
   - script: |
+      echo "$()"
+    displayName: 'Debug step'
+  - script: |
       sudo docker pull $(imageName)
       sudo docker run --name electrumsv-wine-builder-cont -v $PWD:/opt/wine64/drive_c/electrum --rm --workdir /opt/wine64/drive_c/electrum/contrib/build-wine $(imageName) ./build.sh
-      pushd contrib/build-wine/dist
-      # We cannot write to the 'dist' directory, so need to write them elsewhere.
-      sha256sum *.exe > $(Build.Repository.LocalPath)/windows-hashes.txt
-      popd
     displayName: 'Windows build'
     enabled: true
     continueOnError: false
     failOnStderr: false
   - task: CopyFiles@2
     inputs:
-      contents: |
-        windows-hashes.txt
-        contrib/build-wine/dist/?(*.exe|*.txt)
+      contents: contrib/build-wine/dist/?(*.exe|*.txt)
       targetFolder: $(Build.ArtifactStagingDirectory)
       flattenFolders: true
       OverWrite: true
   - task: PublishPipelineArtifact@0
     inputs:
-      artifactName: 'Windows build files'
+      artifactName: 'build-files-intermediate-windows'
       targetPath: $(Build.ArtifactStagingDirectory)
   variables:
     imageName: 'docker.io/electrumsv/electrumsv-wine-builder-img@sha256:8274d555237fc569f032006eccb7d76c1e2e4c9d9ca420d98a00efb527cce46e'
 - job: BuildPythonPackages
+  dependsOn:
+  - Preparation
   pool:
     vmImage: 'ubuntu-16.04'
   steps:
@@ -66,24 +90,23 @@ jobs:
       sudo pip3 install --upgrade pip setuptools wheel
       ./contrib/make_packages
       ./contrib/make_tgz
-      pushd dist
-      sha256sum * > package-hashes.txt
-      popd
     displayName: 'Build Python packages'
     enabled: true
     continueOnError: false
     failOnStderr: false
   - task: CopyFiles@2
     inputs:
-      contents: dist/?(*.zip|*.gz|*.txt)
+      contents: dist/?(*.zip|*.gz)
       targetFolder: $(Build.ArtifactStagingDirectory)
       flattenFolders: true
       OverWrite: true
   - task: PublishPipelineArtifact@0
     inputs:
-      artifactName: 'Python package files'
+      artifactName: 'build-files-intermediate-packages'
       targetPath: $(Build.ArtifactStagingDirectory)
-- job: BuildMacOS
+- job: BuildMacOS10_14
+  dependsOn:
+  - Preparation
   pool:
     vmImage: 'macOS-10.13'
   steps:
@@ -93,10 +116,69 @@ jobs:
       addToPath: true
       architecture: x64
   - script: |
+      # Calin's QR reader requires SDK 10.14, which is not available in the default Xcode version.
+      /bin/bash -c "sudo xcode-select -s /Applications/Xcode_10.1.app/Contents/Developer"
       sudo pip3 install --upgrade pip setuptools wheel
       brew install gettext && brew link gettext --force
       ./contrib/osx/make_osx
-    enabled: false
+    enabled: true
     continueOnError: false
     failOnStderr: false
     displayName: 'Build MacOS binaries'
+  - task: CopyFiles@2
+    inputs:
+      contents: dist/?(*.dmg|*.txt)
+      targetFolder: $(Build.ArtifactStagingDirectory)
+      flattenFolders: true
+      OverWrite: true
+  - task: PublishPipelineArtifact@0
+    inputs:
+      artifactName: 'build-files-intermediate-macos'
+      targetPath: $(Build.ArtifactStagingDirectory)
+- job: ProcessArtifacts
+  # We only build this if:
+  # - The branch being built is master.
+  # - The commit is tagged.
+  # - The build was triggered manually.
+  condition: |
+    and(
+      succeeded(),
+      eq(variables['Build.Reason'], 'Manual'),
+      eq(variables['Build.SourceBranch'], 'refs/heads/master'),
+      eq(variables['COMMIT_TAGGED'], 'yes'),
+      startsWith(variables['COMMIT_TAG'], 'sv-')
+    )
+  dependsOn:
+    - BuildLinuxBasedWindows
+    - BuildPythonPackages
+    - BuildMacOS10_14
+  pool:
+    vmImage: 'ubuntu-16.04'
+  steps:
+  - checkout: none
+  - task: DownloadPipelineArtifact@0
+    inputs:
+      artifactName: 'build-files-intermediate-windows'
+      targetPath: $(Build.ArtifactStagingDirectory)
+  - task: DownloadPipelineArtifact@0
+    inputs:
+      artifactName: 'build-files-intermediate-packages'
+      targetPath: $(Build.ArtifactStagingDirectory)
+  - task: DownloadPipelineArtifact@0
+    inputs:
+      artifactName: 'build-files-intermediate-macos'
+      targetPath: $(Build.ArtifactStagingDirectory)
+  - script: |
+      cd $(Build.ArtifactStagingDirectory)
+      sha256sum * > build-hashes.txt
+    enabled: true
+    continueOnError: false
+    failOnStderr: false
+    displayName: 'Collect build artifacts'
+  - task: PublishPipelineArtifact@0
+    inputs:
+      artifactName: 'build-files'
+      targetPath: $(Build.ArtifactStagingDirectory)
+  variables:
+    COMMIT_TAG: $[dependencies.Preparation.outputs['exportVars.COMMIT_TAG']]
+    COMMIT_TAGGED: $[dependencies.Preparation.outputs['exportVars.COMMIT_TAGGED']]
