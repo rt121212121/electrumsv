@@ -195,6 +195,10 @@ jobs:
       targetPath: $(Build.ArtifactStagingDirectory)
   - task: GitHubRelease@0
     inputs:
-      gitHubConnection: rt121212121
+      gitHubConnection: github-releases
       repositoryName: rt121212121/electrumsv
       tag: $(COMMIT_TAG)
+      tagSource: 'auto'
+      isPreRelease: true
+      target: $(Build.SourceVersion)
+      addChangeLog: true
