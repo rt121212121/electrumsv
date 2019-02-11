@@ -197,12 +197,13 @@ jobs:
       isPreRelease: true
       target: $(Build.SourceVersion)
       addChangeLog: true
+    enabled: true
     condition: |
       and(
         succeeded(),
         eq(variables['Build.Reason'], 'Manual'),
         eq(variables['Build.SourceBranch'], 'refs/heads/master'),
-        eq(dependencies.Preparation.outputs['exportVars.COMMIT_TAGGED'], 'yes'),
-        startsWith(dependencies.Preparation.outputs['exportVars.COMMIT_TAG'], 'sv-'),
-        eq(dependencies.Preparation.outputs['exportVars.TAG_UNSTABLE'], 'yes')
+        eq(variables['COMMIT_TAGGED'], 'yes'),
+        startsWith(variables['COMMIT_TAG'], 'sv-'),
+        eq(variables['TAG_UNSTABLE'], 'yes')
       )
