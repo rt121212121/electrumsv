@@ -164,6 +164,7 @@ jobs:
     - BuildLinuxBasedWindows
     - BuildPythonPackages
     - BuildMacOS10_14
+    - Preparation
   variables:
     COMMIT_TAG: $[dependencies.Preparation.outputs['exportVars.COMMIT_TAG']]
     COMMIT_TAGGED: $[dependencies.Preparation.outputs['exportVars.COMMIT_TAGGED']]
