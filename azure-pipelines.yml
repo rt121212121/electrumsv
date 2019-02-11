@@ -5,7 +5,6 @@
 #   - This means that if one command fails it will proceed onto the next and fail that.
 # - The Wine build docker image is specified by hash, with the intent that it ensures that what we get is what we uploaded to Docker Hub.
 #   - Also tying it to the hash, ensures historical reproducibility and failure will be indicated by Docker image availability.
-# - MacOS build errors in Calin's QR reader.
 
 trigger:
   branches:
@@ -151,15 +150,6 @@ jobs:
 - job: ProcessArtifacts
   pool:
     vmImage: 'ubuntu-16.04'
-  #condition: |
-  #  and(
-  #    succeeded(),
-  #    eq(variables['Build.Reason'], 'Manual'),
-  #    eq(variables['Build.SourceBranch'], 'refs/heads/master'),
-  #    eq(dependencies.Preparation.outputs['exportVars.COMMIT_TAGGED'], 'yes'),
-  #    startsWith(dependencies.Preparation.outputs['exportVars.COMMIT_TAG'], 'sv-'),
-  #    eq(dependencies.Preparation.outputs['exportVars.TAG_UNSTABLE'], 'yes')
-  #  )
   dependsOn:
     - BuildLinuxBasedWindows
     - BuildPythonPackages
@@ -198,12 +188,21 @@ jobs:
     inputs:
       artifactName: 'build-files'
       targetPath: $(Build.ArtifactStagingDirectory)
-  #- task: GitHubRelease@0
-  #  inputs:
-  #    gitHubConnection: github-releases
-  #    repositoryName: rt121212121/electrumsv
-  #    tag: $(COMMIT_TAG)
-  #    tagSource: 'auto'
-  #    isPreRelease: true
-  #    target: $(Build.SourceVersion)
-  #    addChangeLog: true
+  - task: GitHubRelease@0
+    inputs:
+      gitHubConnection: github-releases
+      repositoryName: rt121212121/electrumsv
+      tag: $(COMMIT_TAG)
+      tagSource: 'auto'
+      isPreRelease: true
+      target: $(Build.SourceVersion)
+      addChangeLog: true
+    condition: |
+      and(
+        succeeded(),
+        eq(variables['Build.Reason'], 'Manual'),
+        eq(variables['Build.SourceBranch'], 'refs/heads/master'),
+        eq(dependencies.Preparation.outputs['exportVars.COMMIT_TAGGED'], 'yes'),
+        startsWith(dependencies.Preparation.outputs['exportVars.COMMIT_TAG'], 'sv-'),
+        eq(dependencies.Preparation.outputs['exportVars.TAG_UNSTABLE'], 'yes')
+      )
