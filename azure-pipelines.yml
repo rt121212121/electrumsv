@@ -22,14 +22,27 @@ jobs:
   steps:
   - script: |
       MOST_RECENT_TAG=`git describe --tags --abbrev=0 --match sv-*`
+      RX_VERSION='^[0-9]+\.[0-9]+\.[0-9]+[ab]{1}[0-9]+$'
+      if [[ $MOST_RECENT_TAG =~ $RX_VERSION ]]
+      then
+        echo "vso[task.setvariable variable=TAG_UNSTABLE;isOutput=true]yes"
+        echo "##vso[task.setvariable variable=TAG_UNSTABLE;isOutput=true]yes"
+      else
+        echo "vso[task.setvariable variable=TAG_UNSTABLE;isOutput=true]no"
+        echo "##vso[task.setvariable variable=TAG_UNSTABLE;isOutput=true]no"
+      fi
       TAGGED_COMMIT=`git rev-list -n 1 ${MOST_RECENT_TAG}`
       # Only set this flag if the commit is on the tag.
       if [ "$(Build.SourceVersion)" == "$TAGGED_COMMIT" ]
       then
+        echo "vso[task.setvariable variable=COMMIT_TAGGED;isOutput=true]yes"
         echo "##vso[task.setvariable variable=COMMIT_TAGGED;isOutput=true]yes"
+        echo "vso[task.setvariable variable=COMMIT_TAG;isOutput=true]${MOST_RECENT_TAG}"
         echo "##vso[task.setvariable variable=COMMIT_TAG;isOutput=true]${MOST_RECENT_TAG}"
       else
+        echo "vso[task.setvariable variable=COMMIT_TAGGED;isOutput=true]no"
         echo "##vso[task.setvariable variable=COMMIT_TAGGED;isOutput=true]no"
+        echo "vso[task.setvariable variable=COMMIT_TAG;isOutput=true]"
         echo "##vso[task.setvariable variable=COMMIT_TAG;isOutput=true]"
       fi
       echo "Commit description = $TAGGED_COMMIT"
@@ -136,20 +149,25 @@ jobs:
       artifactName: 'build-files-intermediate-macos'
       targetPath: $(Build.ArtifactStagingDirectory)
 - job: ProcessArtifacts
+  pool:
+    vmImage: 'ubuntu-16.04'
   condition: |
     and(
       succeeded(),
       eq(variables['Build.Reason'], 'Manual'),
       eq(variables['Build.SourceBranch'], 'refs/heads/master'),
       eq(variables['COMMIT_TAGGED'], 'yes'),
-      startsWith(variables['COMMIT_TAG'], 'sv-')
+      startsWith(variables['COMMIT_TAG'], 'sv-'),
+      eq(variables['TAG_UNSTABLE'], 'yes')
     )
   dependsOn:
     - BuildLinuxBasedWindows
     - BuildPythonPackages
     - BuildMacOS10_14
-  pool:
-    vmImage: 'ubuntu-16.04'
+  variables:
+    COMMIT_TAG: $[dependencies.Preparation.outputs['exportVars.COMMIT_TAG']]
+    COMMIT_TAGGED: $[dependencies.Preparation.outputs['exportVars.COMMIT_TAGGED']]
+    TAG_UNSTABLE: $[dependencies.Preparation.outputs['exportVars.TAG_UNSTABLE']]
   steps:
   - checkout: none
   - task: DownloadPipelineArtifact@0
@@ -175,6 +193,8 @@ jobs:
     inputs:
       artifactName: 'build-files'
       targetPath: $(Build.ArtifactStagingDirectory)
-  variables:
-    COMMIT_TAG: $[dependencies.Preparation.outputs['exportVars.COMMIT_TAG']]
-    COMMIT_TAGGED: $[dependencies.Preparation.outputs['exportVars.COMMIT_TAGGED']]
+  - task: GitHubRelease@0
+    inputs:
+      gitHubConnection: rt121212121
+      repositoryName: rt121212121/electrumsv
+      tag: $(COMMIT_TAG)
