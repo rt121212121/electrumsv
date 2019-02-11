@@ -151,15 +151,15 @@ jobs:
 - job: ProcessArtifacts
   pool:
     vmImage: 'ubuntu-16.04'
-  condition: |
-    and(
-      succeeded(),
-      eq(variables['Build.Reason'], 'Manual'),
-      eq(variables['Build.SourceBranch'], 'refs/heads/master'),
-      eq(variables['COMMIT_TAGGED'], 'yes'),
-      startsWith(variables['COMMIT_TAG'], 'sv-'),
-      eq(variables['TAG_UNSTABLE'], 'yes')
-    )
+  #condition: |
+  #  and(
+  #    succeeded(),
+  #    eq(variables['Build.Reason'], 'Manual'),
+  #    eq(variables['Build.SourceBranch'], 'refs/heads/master'),
+  #    eq(dependencies.Preparation.outputs['exportVars.COMMIT_TAGGED'], 'yes'),
+  #    startsWith(dependencies.Preparation.outputs['exportVars.COMMIT_TAG'], 'sv-'),
+  #    eq(dependencies.Preparation.outputs['exportVars.TAG_UNSTABLE'], 'yes')
+  #  )
   dependsOn:
     - BuildLinuxBasedWindows
     - BuildPythonPackages
@@ -171,6 +171,10 @@ jobs:
     TAG_UNSTABLE: $[dependencies.Preparation.outputs['exportVars.TAG_UNSTABLE']]
   steps:
   - checkout: none
+  - script: |
+      echo "Commit COMMIT_TAG = $(COMMIT_TAG)"
+      echo "Commit COMMIT_TAGGED = $(COMMIT_TAGGED)"
+      echo "Commit TAG_UNSTABLE = $(TAG_UNSTABLE)"
   - task: DownloadPipelineArtifact@0
     inputs:
       artifactName: 'build-files-intermediate-windows'
@@ -194,12 +198,12 @@ jobs:
     inputs:
       artifactName: 'build-files'
       targetPath: $(Build.ArtifactStagingDirectory)
-  - task: GitHubRelease@0
-    inputs:
-      gitHubConnection: github-releases
-      repositoryName: rt121212121/electrumsv
-      tag: $(COMMIT_TAG)
-      tagSource: 'auto'
-      isPreRelease: true
-      target: $(Build.SourceVersion)
-      addChangeLog: true
+  #- task: GitHubRelease@0
+  #  inputs:
+  #    gitHubConnection: github-releases
+  #    repositoryName: rt121212121/electrumsv
+  #    tag: $(COMMIT_TAG)
+  #    tagSource: 'auto'
+  #    isPreRelease: true
+  #    target: $(Build.SourceVersion)
+  #    addChangeLog: true
